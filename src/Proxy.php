@@ -170,7 +170,7 @@ class Proxy
      */
     private function setApiResponse($proxyResponse, $cookie = null)
     {
-        $response = new Response($proxyResponse->getContent(), $proxyResponse->getStatusCode());
+        $response = new Response($proxyResponse->getParsedContent(), $proxyResponse->getStatusCode());
 
         if ($this->callMode === ProxyAux::MODE_LOGIN && $proxyResponse->getStatusCode() === 200) {
             $response->setContent(json_encode($this->successAccessToken()));
