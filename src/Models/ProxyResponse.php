@@ -74,10 +74,10 @@ class ProxyResponse
     {
         switch ($contentType) {
             case 'application/json':
-                return json_decode($content, true);
+                return $content->getContents();
 
             default:
-                return $content;
+                return $content->getContents();
         }
     }
     
