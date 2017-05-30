@@ -53,11 +53,12 @@ class RequestManager
     }
 
     /**
-     * @param $inputs
+     * @param $inputs [ post data]
+     * @param $query [ get data]
      * @param $parsedCookie
      * @return array
      */
-    public function executeRequest($inputs, $parsedCookie)
+    public function executeRequest($inputs, $query, $parsedCookie)
     {
         $cookie = null;
         $contentType = explode(';', $this->request->header('Content-Type'));
@@ -66,10 +67,11 @@ class RequestManager
         switch ($this->callMode) {
             case ProxyAux::MODE_LOGIN:
                 $inputs = $this->addLoginExtraParams($inputs);
-                $proxyResponse = $this->replicateRequest($this->method, $this->uri, $inputs, $contentType);
+                $proxyResponse = $this->replicateRequest($this->method, $this->uri, $inputs, $query, $contentType);
 
                 $clientId = (array_key_exists(ProxyAux::CLIENT_ID, $inputs)) ? $inputs[ProxyAux::CLIENT_ID] : null;
                 $content = $proxyResponse->getParsedContent();
+
                 $content = ProxyAux::addQueryValue($content, ProxyAux::COOKIE_URI, $this->uri);
                 $content = ProxyAux::addQueryValue($content, ProxyAux::COOKIE_METHOD, $this->method);
                 $content = ProxyAux::addQueryValue($content, ProxyAux::CLIENT_ID, $clientId);
@@ -78,7 +80,7 @@ class RequestManager
                 break;
             case ProxyAux::MODE_TOKEN:
                 $inputs = $this->addTokenExtraParams($inputs, $parsedCookie);
-                $proxyResponse = $this->replicateRequest($this->method, $this->uri, $inputs, $contentType);
+                $proxyResponse = $this->replicateRequest($this->method, $this->uri, $inputs, $query, $contentType);
 
                 //Get a new access token from refresh token if exists
                 $cookie = null;
@@ -95,7 +97,7 @@ class RequestManager
                 $cookie = (isset($ret)) ? $ret['cookie'] : $cookie;
                 break;
             default:
-                $proxyResponse = $this->replicateRequest($this->method, $this->uri, $inputs, $contentType);
+                $proxyResponse = $this->replicateRequest($this->method, $this->uri, $inputs, $query, $contentType);
         }
 
         return array(
@@ -116,7 +118,7 @@ class RequestManager
         //Get a new access token from refresh token
         $inputs = $this->removeTokenExtraParams($inputs);
         $params = $this->addRefreshExtraParams(array(), $parsedCookie);
-        $proxyResponse = $this->replicateRequest($parsedCookie[ProxyAux::COOKIE_METHOD], $parsedCookie[ProxyAux::COOKIE_URI], $params, 'application/x-www-form-urlencoded');
+        $proxyResponse = $this->replicateRequest($parsedCookie[ProxyAux::COOKIE_METHOD], $parsedCookie[ProxyAux::COOKIE_URI], $params, [], 'application/x-www-form-urlencoded');
         $content = $proxyResponse->getParsedContent();
 
         if ($proxyResponse->getStatusCode() === 200 && array_key_exists(ProxyAux::ACCESS_TOKEN, $content)) {
@@ -129,7 +131,7 @@ class RequestManager
             $cookie = $this->cookieManager->createCookie($parsedCookie);
 
             // Retry original request that failed with 401
-            $proxyResponse = $this->replicateRequest($this->method, $this->uri, $inputs, $contentType);
+            $proxyResponse = $this->replicateRequest($this->method, $this->uri, $inputs, [], $contentType);
         } else {
             $cookie = $this->cookieManager->destroyCookie();
         }
@@ -143,12 +145,13 @@ class RequestManager
     /**
      * @param $method
      * @param $uri
-     * @param $inputs
+     * @param $inputs  [post data]
+     * @param $query   [get data]
      * @return ProxyResponse
      */
-    private function replicateRequest($method, $uri, $inputs, $contentType)
+    private function replicateRequest($method, $uri, $inputs, $query, $contentType)
     {
-        $guzzleResponse = $this->sendGuzzleRequest($method, $uri, $inputs, $contentType);
+        $guzzleResponse = $this->sendGuzzleRequest($method, $uri, $inputs, $query, $contentType);
         $body = $guzzleResponse->getBody();
         $contentType = $guzzleResponse->getHeaderLine('content-type');
         $proxyResponse = new ProxyResponse($guzzleResponse->getStatusCode(), $guzzleResponse->getReasonPhrase(), $guzzleResponse->getProtocolVersion(), $body, $contentType);
@@ -156,7 +159,8 @@ class RequestManager
         return $proxyResponse;
     }
 
-    private function createForwardedForString() {
+    private function createForwardedForString()
+    {
         $ips = array();
 
         // Pass on original client and proxy IP address info if available.
@@ -168,13 +172,13 @@ class RequestManager
                 $pIp = trim($pIp);
 
                 if (filter_var($pIp, FILTER_VALIDATE_IP)) {
-                    $ips []= $pIp;
+                    $ips [] = $pIp;
                 }
             }
         }
 
         // Add the real client IP address that made the currently processed request
-        $ips []= $_SERVER['REMOTE_ADDR'];
+        $ips [] = $_SERVER['REMOTE_ADDR'];
 
         return implode(', ', $ips);
     }
@@ -182,10 +186,11 @@ class RequestManager
     /**
      * @param $method
      * @param $uriVal
-     * @param $inputs
+     * @param $inputs [post data]
+     * @param $query  [get data]
      * @return \GuzzleHttp\Message\ResponseInterface
      */
-    private function sendGuzzleRequest($method, $uriVal, $inputs, $contentType)
+    private function sendGuzzleRequest($method, $uriVal, $inputs, $query, $contentType)
     {
         $options = array('headers' => [
             'X-Forwarded-For' => $this->createForwardedForString()
@@ -212,40 +217,39 @@ class RequestManager
             $options['headers'][ProxyAux::HEADER_AUTH] = 'Bearer ' . $accessToken;
         }
 
-        if ($method === 'GET') {
-            $options = array_add($options, 'query', $inputs);
-        } else {
-            if (Request::matchesType($contentType, 'application/json')) {
-                $options = array_add($options, 'json', $inputs);
-            } else if (Request::matchesType($contentType, 'application/x-www-form-urlencoded')) {
-              $options = array_add($options, 'form_params', $inputs);
-            } elseif (Request::matchesType($contentType, 'multipart/form-data')) {
-                $options['multipart'] = [];
+        $options = array_add($options, 'query', $query);
 
-                // filter through all file inputs instances and append them to guzzle multipart option based on type of input
-                foreach (request()->all() as $inputName => $input) {
-                    if ($input instanceof UploadedFile) {
-                        $options['multipart'][] = ['name' => $inputName, 'contents' => fopen($input->getRealPath(), 'r'), 'filename' => $input->getClientOriginalName()];
-                    } else {
-                        $options['multipart'][] = ['name' => $inputName, 'contents' => $input];
-                    }
-                }
+        if (Request::matchesType($contentType, 'application/json')) {
+            $options = array_add($options, 'json', $inputs);
+        } else if (Request::matchesType($contentType, 'application/x-www-form-urlencoded')) {
+            $options = array_add($options, 'form_params', $inputs);
+        } elseif (Request::matchesType($contentType, 'multipart/form-data')) {
 
-                $options = array_add($options, 'multipart', $inputs);
-            } else {
+            $options['multipart'] = [];
 
-                $options = array_add($options, 'headers', [
-                    'Content-Type' => $contentType
-                ]);
-                $options = array_add($options, 'body', $inputs);
+            foreach ($inputs as $name => $contents) {
+                $options['multipart'][] = compact('name', 'contents');
             }
+
+            foreach ($this->request->files as $inputName => $input) {
+                if ($input instanceof UploadedFile) {
+                    $options['multipart'][] = ['name' => $inputName, 'contents' => fopen($input->getRealPath(), 'r'), 'filename' => $input->getClientOriginalName()];
+                }
+            }
+
+        } else {
+
+            $options = array_add($options, 'headers', [
+                'Content-Type' => $contentType
+            ]);
         }
+
 
         try {
 
             return $client->request($method, $uriVal, $options);
         } catch (ClientException $ex) {
-            Log::warning("Got error response from API: ".$ex->getMessage());
+            Log::warning("Got error response from API: " . $ex->getMessage());
 
             return $ex->getResponse();
         }

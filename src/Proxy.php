@@ -64,14 +64,15 @@ class Proxy
     public function makeRequest(Request $request, $url)
     {
         $this->uri = $url;
-        $inputs = $request->all();
+        $inputs = $request->request->all();
+        $query = $request->query();
 
         //Retrieve the call mode from input parameters
-        $this->callMode = $this->getRequestMode($inputs);
+        $this->callMode = $this->getRequestMode();
 
         //Remove parameters from inputs
         $inputs = ProxyAux::removeQueryValue($inputs, $this->uriParam);
-        $inputs = ProxyAux::removeQueryValue($inputs, $this->skipParam);
+        $query = ProxyAux::removeQueryValue($query, $this->skipParam);
 
         //Read the cookie if exists
         $accessToken = null;
@@ -100,7 +101,7 @@ class Proxy
             $requestManager->enableHeader();
         }
 
-        $proxyResponse = $requestManager->executeRequest($inputs, $accessToken);
+        $proxyResponse = $requestManager->executeRequest($inputs, $query, $accessToken);
         $wrappedResponse = $proxyResponse['response'];
         $statusCode = $wrappedResponse->getStatusCode();
         $cookie = $proxyResponse['cookie'];
@@ -110,7 +111,7 @@ class Proxy
                 // User refresh token has expired... delete cookie so new login can be forced
                 Log::warning('Guest access token has expired');
                 $accessToken = $this->getGuestAccessToken($url, true);
-                $proxyResponse = $requestManager->executeRequest($inputs, $accessToken);
+                $proxyResponse = $requestManager->executeRequest($inputs, $query, $accessToken);
                 $wrappedResponse = $proxyResponse['response'];
             } else {
                 $this->reauthenticateUser($wrappedResponse);
@@ -143,13 +144,12 @@ class Proxy
     }
 
     /**
-     * @param $inputs
      * @return string
      */
-    private function getRequestMode($inputs)
+    private function getRequestMode()
     {
-        $grantType = ProxyAux::getQueryValue($inputs, ProxyAux::GRANT_TYPE);
-        $skip = ProxyAux::getQueryValue($inputs, $this->skipParam);
+        $grantType = ProxyAux::getQueryValue(request()->request->all(), ProxyAux::GRANT_TYPE);
+        $skip = ProxyAux::getQueryValue(request()->query(), $this->skipParam);
         $mode = ProxyAux::MODE_TOKEN;
 
         if (isset($grantType)) {
@@ -170,6 +170,9 @@ class Proxy
      */
     private function setApiResponse($proxyResponse, $cookie = null)
     {
+
+        $content = $proxyResponse->getParsedContent();
+
         $response = new Response($proxyResponse->getParsedContent(), $proxyResponse->getStatusCode());
 
         if ($this->callMode === ProxyAux::MODE_LOGIN && $proxyResponse->getStatusCode() === 200) {
