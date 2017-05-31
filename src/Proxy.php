@@ -65,6 +65,16 @@ class Proxy
     {
         $this->uri = $url;
         $inputs = $request->request->all();
+
+        // if its json payload then request->all is not populated
+        if ($request->isJson()) {;
+            $inputs = $request->json();
+
+            if ($inputs instanceof ParameterBag) {
+                $inputs = $inputs->all();
+            }
+        }
+        
         $query = $request->query();
 
         //Retrieve the call mode from input parameters
