@@ -74,7 +74,7 @@ class ProxyResponse
     {
         switch ($contentType) {
             case 'application/json':
-                return \GuzzleHttp\json_decode($content->getContents(), true);
+                return $content->getContents();
 
             default:
                 return $content->getContents();

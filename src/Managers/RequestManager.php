@@ -70,7 +70,7 @@ class RequestManager
                 $proxyResponse = $this->replicateRequest($this->method, $this->uri, $inputs, $query, $contentType);
 
                 $clientId = (array_key_exists(ProxyAux::CLIENT_ID, $inputs)) ? $inputs[ProxyAux::CLIENT_ID] : null;
-                $content = $proxyResponse->getParsedContent();
+                $content = \GuzzleHttp\json_decode($proxyResponse->getContent(), true);
 
                 $content = ProxyAux::addQueryValue($content, ProxyAux::COOKIE_URI, $this->uri);
                 $content = ProxyAux::addQueryValue($content, ProxyAux::COOKIE_METHOD, $this->method);
@@ -119,7 +119,7 @@ class RequestManager
         $inputs = $this->removeTokenExtraParams($inputs);
         $params = $this->addRefreshExtraParams(array(), $parsedCookie);
         $proxyResponse = $this->replicateRequest($parsedCookie[ProxyAux::COOKIE_METHOD], $parsedCookie[ProxyAux::COOKIE_URI], $params, [], 'application/x-www-form-urlencoded');
-        $content = $proxyResponse->getParsedContent();
+        $content = \GuzzleHttp\json_decode($proxyResponse->getContent());
 
         if ($proxyResponse->getStatusCode() === 200 && array_key_exists(ProxyAux::ACCESS_TOKEN, $content)) {
             $this->callMode = ProxyAux::MODE_TOKEN;
@@ -192,19 +192,22 @@ class RequestManager
      */
     private function sendGuzzleRequest($method, $uriVal, $inputs, $query, $contentType)
     {
+        
         $options = array('headers' => [
             'X-Forwarded-For' => $this->createForwardedForString()
         ]);
 
         $headers = $this->request->headers->all();
 
-        foreach ($headers as $name => $values) {
-            // Look for extra headers provided by caller that should be forwarded to API
-            if (substr($name, 0, 8) == 'proxify-') {
-                $forwardHeaderName = substr($name, 8);
+        if ($this->callMode !== ProxyAux::MODE_LOGIN) { // For some reason sending guest token header with oauth/token request results in invalid_grant error
+            foreach ($headers as $name => $values) {
+                // Look for extra headers provided by caller that should be forwarded to API
+                if (substr($name, 0, 8) == 'proxify-') {
+                    $forwardHeaderName = substr($name, 8);
 
-                foreach ($values as $value) {
-                    $options['headers'][$forwardHeaderName] = $value;
+                    foreach ($values as $value) {
+                        $options['headers'][$forwardHeaderName] = $value;
+                    }
                 }
             }
         }

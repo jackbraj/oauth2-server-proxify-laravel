@@ -24,6 +24,7 @@ use Illuminate\Http\Response;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ClientException;
 use Manukn\LaravelProxify\Models\ProxyResponse;
+use Symfony\Component\HttpFoundation\ParameterBag;
 
 class Proxy
 {
@@ -67,14 +68,14 @@ class Proxy
         $inputs = $request->request->all();
 
         // if its json payload then request->all is not populated
-        if ($request->isJson()) {;
+        if ($request->isJson()) {
             $inputs = $request->json();
 
             if ($inputs instanceof ParameterBag) {
                 $inputs = $inputs->all();
             }
         }
-        
+
         $query = $request->query();
 
         //Retrieve the call mode from input parameters
@@ -181,9 +182,10 @@ class Proxy
     private function setApiResponse($proxyResponse, $cookie = null)
     {
 
-        $content = $proxyResponse->getParsedContent();
+        $content = $proxyResponse->getContent();
 
-        $response = new Response($proxyResponse->getParsedContent(), $proxyResponse->getStatusCode());
+        $response = new Response($content, $proxyResponse->getStatusCode());
+        $response->header('Content-Type', 'application/json');
 
         if ($this->callMode === ProxyAux::MODE_LOGIN && $proxyResponse->getStatusCode() === 200) {
             $response->setContent(json_encode($this->successAccessToken()));
