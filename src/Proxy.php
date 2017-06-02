@@ -240,10 +240,9 @@ class Proxy
             return;
         }
 
-        $contentType = $response->getHeaderLine('content-type');
         $content = $response->getBody();
 
-        return ProxyResponse::parseContent($contentType, $content);
+        return \GuzzleHttp\json_decode($content->getContents(), true);
     }
 
     /**
