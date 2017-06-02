@@ -119,7 +119,7 @@ class RequestManager
         $inputs = $this->removeTokenExtraParams($inputs);
         $params = $this->addRefreshExtraParams(array(), $parsedCookie);
         $proxyResponse = $this->replicateRequest($parsedCookie[ProxyAux::COOKIE_METHOD], $parsedCookie[ProxyAux::COOKIE_URI], $params, [], 'application/x-www-form-urlencoded');
-        $content = \GuzzleHttp\json_decode($proxyResponse->getContent());
+        $content = \GuzzleHttp\json_decode($proxyResponse->getContent(), true);
 
         if ($proxyResponse->getStatusCode() === 200 && array_key_exists(ProxyAux::ACCESS_TOKEN, $content)) {
             $this->callMode = ProxyAux::MODE_TOKEN;
